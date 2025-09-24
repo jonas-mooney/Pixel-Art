@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>D3 + Canvas Grid with Zoom & Click</title>
+    <style>
+      #container {
+        width: 800px;
+        height: 800px;
+        border: 1px solid #ccc;
+        cursor: crosshair;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+  </head>
+  <body>
+    <div id="container"></div>
+
+    <script>
+      const numRows = 100,
+        numCols = 100,
+        cellSize = 8;
+
+      // Sparse colored pixels - index & color
+      let coloredData = [
+        { index: 101, color: "#3377ff" },
+        { index: 2099, color: "#ff4433" },
+        { index: 5350, color: "#33ff77" },
+        { index: 9999, color: "#000000" },
+      ];
+
+      // Convert index to x/y for easy hit detection
+      function indexToXY(index) {
+        return {
+          x: index % numCols,
+          y: Math.floor(index / numCols),
+        };
+      }
+
+      // Create lookup map for color by index
+      function createColorLookup(data) {
+        const lookup = {};
+        data.forEach(({ index, color }) => {
+          lookup[index] = color;
+        });
+        return lookup;
+      }
+
+      //
+
+      let colorLookup = createColorLookup(coloredData);
+
+      const width = numCols * cellSize;
+      const height = numRows * cellSize;
+
+      // Create canvas inside container
+      const container = d3.select("#container");
+      const canvas = container
+        .append("canvas")
+        .attr("width", width)
+        .attr("height", height)
+        .node();
+
+      const context = canvas.getContext("2d");
+
+      // Setup d3 zoom
+      const zoom = d3.zoom().scaleExtent([1, 20]).on("zoom", zoomed);
+
+      d3.select(canvas).call(zoom);
+
+      // Current transform state
+      let transform = d3.zoomIdentity;
+
+      // Render function draws grid on canvas applying current transform
+      function render() {
+        context.save();
+
+        // Clear canvas
+        context.clearRect(0, 0, width, height);
+
+        // Apply zoom and pan transform
+        context.translate(transform.x, transform.y);
+        context.scale(transform.k, transform.k);
+
+        // Draw all squares
+        for (let i = 0; i < numRows * numCols; i++) {
+          const { x, y } = indexToXY(i);
+          const color = colorLookup[i] || "#ffffff";
+
+          // Draw cell
+          context.fillStyle = color;
+          context.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+
+          // Optional: draw border for grid cell at scale >= 1
+          if (transform.k >= 1) {
+            context.strokeStyle = "#bbb";
+            context.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+          }
+        }
+
+        context.restore();
+      }
+
+      function zoomed(event) {
+        transform = event.transform;
+        render();
+      }
+
+      // Convert mouse event coords to grid index based on current transform
+      function getCellIndexFromEvent(event) {
+        const [mx, my] = d3.pointer(event);
+        // Reverse zoom transform
+        const x = (mx - transform.x) / transform.k;
+        const y = (my - transform.y) / transform.k;
+        if (x < 0 || y < 0) return -1;
+        const col = Math.floor(x / cellSize);
+        const row = Math.floor(y / cellSize);
+        if (col >= numCols || row >= numRows) return -1;
+        return row * numCols + col;
+      }
+
+      // Handle click for toggling color
+      d3.select(canvas).on("click", (event) => {
+        const index = getCellIndexFromEvent(event);
+        if (index === -1) return;
+
+        if (
+          colorLookup[index] === undefined ||
+          colorLookup[index] === "#ffffff"
+        ) {
+          colorLookup[index] = "#e63946"; // red on click
+        } else {
+          delete colorLookup[index]; // revert to white
+        }
+
+        render();
+        // Update coloredData for persistence if needed
+        coloredData = Object.entries(colorLookup).map(([idx, color]) => ({
+          index: parseInt(idx),
+          color,
+        }));
+        // TODO: Send coloredData to backend here
+        console.log("Colored pixels:", coloredData);
+      });
+
+      // Initial draw
+      render();
+    </script>
+  </body>
+</html>
